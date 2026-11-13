@@ -93,7 +93,7 @@ def generate_report(course_name, lab_number, student_name, group_name, teacher_n
 
 def send_to_llm(messages):
     headers = {"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"}
-    request = {'model': 'llama-3.1-70b-versatile', 'messages': messages, 'tools': tools}
+    request = {'model': 'qwen/qwen3.8-27b', 'messages': messages, 'tools': tools}
     response = requests.post('https://api.groq.com/openai/v1/chat/completions',
                              headers=headers, json=request)
     if response.status_code != 200:
