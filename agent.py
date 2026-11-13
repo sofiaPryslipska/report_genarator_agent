@@ -93,7 +93,7 @@ def generate_report(course_name, lab_number, student_name, group_name, teacher_n
 
 def send_to_llm(messages):
     headers = {"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"}
-    request = {'model': 'gemini-2.5-flash', 'messages': messages, 'tools': tools}
+    request = {'model': 'google/gemma-4-26b-a4b-it:free', 'messages': messages, 'tools': tools}
     response = requests.post('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
                              headers=headers, json=request)
     if response.status_code != 200:
