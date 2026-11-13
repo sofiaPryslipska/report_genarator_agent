@@ -93,7 +93,7 @@ def generate_report(course_name, lab_number, student_name, group_name, teacher_n
 
 def send_to_llm(messages):
     headers = {"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"}
-    request = {'model': 'gemini-2.5-flash', 'messages': messages, 'tools': tools}
+    request = {'model': 'gemini-1.5-flash', 'messages': messages, 'tools': tools}
     response = requests.post('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
                              headers=headers, json=request)
     if response.status_code != 200:
@@ -159,6 +159,16 @@ if user_message := st.chat_input("Введіть повідомлення або
                             args.get('teacher_name'), args.get('report_body')
                         )
                         st.success(result)  # Виводимо зелену плашку про успіх в UI
+                        
+                        output_filename = f"Lab_{args.get('lab_number')}_{args.get('student_name').replace(' ', '_')}.docx"
+                        if os.path.exists(output_filename):
+                            with open(output_filename, "rb") as file:
+                                st.download_button(
+                                    label="📥 Завантажити готовий звіт",
+                                    data=file,
+                                    file_name=output_filename,
+                                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                                )
                     else:
                         result = f'Інструмент {tool_name} не існує'
 
