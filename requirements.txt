@@ -1,0 +1,9 @@
+streamlit
+
+requests
+
+pypdf
+
+python-docx
+
+python-dotenv
