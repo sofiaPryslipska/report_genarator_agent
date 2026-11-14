@@ -5,6 +5,8 @@ import pypdf
 import docx
 import os
 from dotenv import load_dotenv
+import re
+from docx.shared import Pt
 
 load_dotenv()
 
@@ -48,6 +50,7 @@ tools = [
                             "4. Хід роботи (детальний покроковий опис алгоритму, використаних бібліотек, функцій та логіки програми).\n"
                             "5. Код програми (повний лістинг коду користувача без скорочень).\n"
                             "6. Висновки (підсумок виконаної роботи, чого навчилися та які результати отримано)."
+                            "Кожен із 6 заголовків розділів обов'язково починай із символу # (наприклад: # 1. Тема роботи)."
                         )
                     }
                 },
@@ -90,13 +93,65 @@ def generate_report(course_name, lab_number, student_name, group_name, teacher_n
             "{{LAB_NUMBER}}": str(lab_number),
             "{{STUDENT_NAME}}": student_name,
             "{{GROUP_NAME}}": group_name,
-            "{{TEACHER_NAME}}": teacher_name,
-            "{{REPORT_BODY}}": report_body
+            "{{TEACHER_NAME}}": teacher_name
         }
         for paragraph in doc.paragraphs:
             for tag, actual_text in replacements.items():
                 if tag in paragraph.text:
                     paragraph.text = paragraph.text.replace(tag, actual_text)
+
+            if "{{REPORT_BODY}}" in paragraph.text:
+                in_code_block = False
+                for line in report_body.split('\n'):
+                    stripped = line.strip()
+
+                    # Перемикаємо режим коду при зустрічі ```
+                    if stripped.startswith('```'):
+                        in_code_block = not in_code_block
+                        continue
+
+                    if in_code_block:
+                        new_p = paragraph.insert_paragraph_before()
+                        new_p.paragraph_format.space_before = Pt(0)
+                        new_p.paragraph_format.space_after = Pt(0)
+                        run = new_p.add_run(line)
+                        run.font.name = 'Consolas'
+                        run.font.size = Pt(10)
+                    else:
+                        if not stripped:
+                            continue
+
+                        clean_line = stripped.replace('`', '')
+
+                        # Заголовки розділів (# Тема роботи, # Мета роботи...)
+                        if clean_line.startswith('#'):
+                            heading_text = re.sub(r'^#+\s*', '', clean_line).replace('**', '')
+                            new_p = paragraph.insert_paragraph_before()
+                            new_p.paragraph_format.space_before = Pt(12)
+                            new_p.paragraph_format.space_after = Pt(4)
+                            run = new_p.add_run(heading_text)
+                            run.bold = True
+                            run.font.name = 'Times New Roman'
+                            run.font.size = Pt(14)
+                        else:
+                            # Звичайні абзаци та списки з підтримкою жирного тексту (**...**)
+                            new_p = paragraph.insert_paragraph_before()
+                            new_p.paragraph_format.space_after = Pt(6)
+                            new_p.paragraph_format.line_spacing = 1.15
+                            parts = re.split(r'(\*\*.*?\*\*)', clean_line)
+                            for part in parts:
+                                if not part:
+                                    continue
+                                if part.startswith('**') and part.endswith('**') and len(part) > 4:
+                                    run = new_p.add_run(part[2:-2])
+                                    run.bold = True
+                                else:
+                                    run = new_p.add_run(part.replace('*', ''))
+                                run.font.name = 'Times New Roman'
+                                run.font.size = Pt(14)
+
+                # Видаляємо сам тег {{REPORT_BODY}} після вставки тексту
+                paragraph._element.getparent().remove(paragraph._element)
 
         output_filename = f"Lab_{lab_number}_{student_name.replace(' ', '_')}.docx"
         doc.save(output_filename)
