@@ -94,7 +94,7 @@ def generate_report(course_name, lab_number, student_name, group_name, teacher_n
 def send_to_llm(messages):
     headers = {"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"}
     request = {'model': 'gemini-2.5-flash', 'messages': messages, 'tools': tools}
-    response = requests.post('https://api.groq.com/openai/v1/chat/completions',
+    response = requests.post('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
                              headers=headers, json=request)
     if response.status_code != 200:
         st.error(f"API ERROR: {response.json()}")
