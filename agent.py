@@ -166,7 +166,7 @@ def generate_report(course_name, lab_number, student_name, group_name, teacher_n
 def send_to_llm(messages):
     headers = {"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"}
     request = {
-        'model': 'gemini-2.5-flash-lite',
+        'model': 'gemini-3.5-flash-lite',
         'messages': messages,
         'tools': tools,
         'reasoning_effort': 'low'
