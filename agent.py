@@ -4,8 +4,8 @@ import json
 import pypdf
 import docx
 import os
-from dotenv import load_dotenv
 import re
+from dotenv import load_dotenv
 from docx.shared import Pt
 
 load_dotenv()
@@ -34,27 +34,22 @@ tools = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "course_name": {"type": "string"},
-                    "lab_number": {"type": "string"},
-                    "student_name": {"type": "string"},
-                    "group_name": {"type": "string"},
-                    "teacher_name": {"type": "string"},
-                    "report_body": {
-                        "type": "string",
-                        "description": (
-                            "Повний структурований текст звіту українською мовою в академічному стилі. "
-                            "ОБОВ'ЯЗКОВО має містити такі 6 розділів із заголовками:\n"
-                            "1. Тема роботи (взяти з методички або сформулювати за кодом).\n"
-                            "2. Мета роботи (взяти з методички або сформулювати відповідно до завдання).\n"
-                            "3. Завдання (опис завдання лабораторної роботи з методички).\n"
-                            "4. Хід роботи (детальний покроковий опис алгоритму, використаних бібліотек, функцій та логіки програми).\n"
-                            "5. Код програми (повний лістинг коду користувача без скорочень).\n"
-                            "6. Висновки (підсумок виконаної роботи, чого навчилися та які результати отримано)."
-                            "Кожен із 6 заголовків розділів обов'язково починай із символу # (наприклад: # 1. Тема роботи)."
-                        )
-                    }
+                    "course_name": {"type": "string", "description": "Повна назва навчальної дисципліни"},
+                    "lab_number": {"type": "string", "description": "Номер лабораторної роботи"},
+                    "student_name": {"type": "string", "description": "Прізвище та ініціали студента"},
+                    "group_name": {"type": "string", "description": "Шифр групи"},
+                    "teacher_name": {"type": "string", "description": "Прізвище та ініціали викладача"},
+                    "topic": {"type": "string", "description": "Тема лабораторної роботи (без слова 'Тема роботи')"},
+                    "goal": {"type": "string", "description": "Мета лабораторної роботи (без слова 'Мета роботи')"},
+                    "tasks": {"type": "string", "description": "Перелік завдань лабораторної роботи"},
+                    "workflow": {"type": "string", "description": "Детальний покроковий опис ходу роботи, бібліотек та логіки коду"},
+                    "program_code": {"type": "string", "description": "Повний чистий лістинг коду програми без обгорток ```"},
+                    "conclusions": {"type": "string", "description": "Висновки до лабораторної роботи"}
                 },
-                "required": ["course_name", "lab_number", "student_name", "group_name", "teacher_name", "report_body"]
+                "required": [
+                    "course_name", "lab_number", "student_name", "group_name", "teacher_name",
+                    "topic", "goal", "tasks", "workflow", "program_code", "conclusions"
+                ]
             }
         }
     }
@@ -82,7 +77,38 @@ def extract_text_from_file(file_path):
         return f"Помилка при читанні файлу: {str(e)}"
 
 
-def generate_report(course_name, lab_number, student_name, group_name, teacher_name, report_body):
+def _add_formatted_paragraph(target_paragraph, text):
+    clean_line = text.strip().replace('`', '')
+    if not clean_line:
+        return
+    new_p = target_paragraph.insert_paragraph_before()
+    new_p.paragraph_format.space_after = Pt(6)
+    new_p.paragraph_format.line_spacing = 1.15
+    parts = re.split(r'(\*\*.*?\*\*)', clean_line)
+    for part in parts:
+        if not part:
+            continue
+        if part.startswith('**') and part.endswith('**') and len(part) > 4:
+            run = new_p.add_run(part[2:-2])
+            run.bold = True
+        else:
+            run = new_p.add_run(part.replace('*', ''))
+        run.font.name = 'Times New Roman'
+        run.font.size = Pt(14)
+
+
+def _add_section_heading(target_paragraph, title):
+    new_p = target_paragraph.insert_paragraph_before()
+    new_p.paragraph_format.space_before = Pt(12)
+    new_p.paragraph_format.space_after = Pt(4)
+    run = new_p.add_run(title)
+    run.bold = True
+    run.font.name = 'Times New Roman'
+    run.font.size = Pt(14)
+
+
+def generate_report(course_name, lab_number, student_name, group_name, teacher_name,
+                    topic, goal, tasks, workflow, program_code, conclusions):
     template_path = 'template.docx'
     if not os.path.exists(template_path):
         return f"Помилка: Шаблон '{template_path}' не знайдено."
@@ -101,56 +127,33 @@ def generate_report(course_name, lab_number, student_name, group_name, teacher_n
                     paragraph.text = paragraph.text.replace(tag, actual_text)
 
             if "{{REPORT_BODY}}" in paragraph.text:
-                in_code_block = False
-                for line in report_body.split('\n'):
-                    stripped = line.strip()
+                sections = [
+                    ("1. Тема роботи", topic),
+                    ("2. Мета роботи", goal),
+                    ("3. Завдання", tasks),
+                    ("4. Хід роботи", workflow),
+                ]
+                for title, content in sections:
+                    _add_section_heading(paragraph, title)
+                    for line in str(content).split('\n'):
+                        _add_formatted_paragraph(paragraph, line)
 
-                    # Перемикаємо режим коду при зустрічі ```
-                    if stripped.startswith('```'):
-                        in_code_block = not in_code_block
+                _add_section_heading(paragraph, "5. Код програми")
+                code_lines = str(program_code).strip().split('\n')
+                for line in code_lines:
+                    if line.strip().startswith('```'):
                         continue
+                    new_p = paragraph.insert_paragraph_before()
+                    new_p.paragraph_format.space_before = Pt(0)
+                    new_p.paragraph_format.space_after = Pt(0)
+                    run = new_p.add_run(line)
+                    run.font.name = 'Consolas'
+                    run.font.size = Pt(10)
 
-                    if in_code_block:
-                        new_p = paragraph.insert_paragraph_before()
-                        new_p.paragraph_format.space_before = Pt(0)
-                        new_p.paragraph_format.space_after = Pt(0)
-                        run = new_p.add_run(line)
-                        run.font.name = 'Consolas'
-                        run.font.size = Pt(10)
-                    else:
-                        if not stripped:
-                            continue
+                _add_section_heading(paragraph, "6. Висновки")
+                for line in str(conclusions).split('\n'):
+                    _add_formatted_paragraph(paragraph, line)
 
-                        clean_line = stripped.replace('`', '')
-
-                        # Заголовки розділів (# Тема роботи, # Мета роботи...)
-                        if clean_line.startswith('#'):
-                            heading_text = re.sub(r'^#+\s*', '', clean_line).replace('**', '')
-                            new_p = paragraph.insert_paragraph_before()
-                            new_p.paragraph_format.space_before = Pt(12)
-                            new_p.paragraph_format.space_after = Pt(4)
-                            run = new_p.add_run(heading_text)
-                            run.bold = True
-                            run.font.name = 'Times New Roman'
-                            run.font.size = Pt(14)
-                        else:
-                            # Звичайні абзаци та списки з підтримкою жирного тексту (**...**)
-                            new_p = paragraph.insert_paragraph_before()
-                            new_p.paragraph_format.space_after = Pt(6)
-                            new_p.paragraph_format.line_spacing = 1.15
-                            parts = re.split(r'(\*\*.*?\*\*)', clean_line)
-                            for part in parts:
-                                if not part:
-                                    continue
-                                if part.startswith('**') and part.endswith('**') and len(part) > 4:
-                                    run = new_p.add_run(part[2:-2])
-                                    run.bold = True
-                                else:
-                                    run = new_p.add_run(part.replace('*', ''))
-                                run.font.name = 'Times New Roman'
-                                run.font.size = Pt(14)
-
-                # Видаляємо сам тег {{REPORT_BODY}} після вставки тексту
                 paragraph._element.getparent().remove(paragraph._element)
 
         output_filename = f"Lab_{lab_number}_{student_name.replace(' ', '_')}.docx"
@@ -162,20 +165,36 @@ def generate_report(course_name, lab_number, student_name, group_name, teacher_n
 
 def send_to_llm(messages):
     headers = {"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"}
-    request = {'model': 'gemini-2.5-flash', 'messages': messages, 'tools': tools}
-    response = requests.post('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
-                             headers=headers, json=request)
+    request = {
+        'model': 'gemini-2.5-flash',
+        'messages': messages,
+        'tools': tools,
+        'reasoning_effort': 'low'
+    }
+    response = requests.post(
+        'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
+        headers=headers,
+        json=request
+    )
     if response.status_code != 200:
         st.error(f"API ERROR: {response.json()}")
         return None
-    return response.json()['choices'][0]['message']
+
+    data = response.json()
+    choice = data['choices'][0]
+    msg = choice['message']
+
+    if not msg.get('content') and not msg.get('tool_calls'):
+        st.warning(f"Модель повернула порожню відповідь (finish_reason: {choice.get('finish_reason')}). Напишіть «Продовжуй» або повторіть запит.")
+        return None
+
+    return msg
 
 
 # Налаштування інтерфейсу
 st.set_page_config(page_title="Агент звітів", page_icon="📝", layout="centered")
 st.title("Автоматичний генератор звітів 📝")
 
-# Ініціалізація історії повідомлень із системним промптом
 if "messages" not in st.session_state:
     st.session_state.messages = [
         {
@@ -183,15 +202,13 @@ if "messages" not in st.session_state:
             "content": (
                 "Ти академічний агент-помічник для створення звітів з лабораторних робіт. "
                 "Правила роботи:\n"
-                "1. Якщо завантажено методичку, обов'язково прочитай її через extract_text_from_file, щоб взяти звідти точну Тему, Мету та Завдання.\n"
-                "2. Запитай у користувача його Прізвище та ініціали, групу,  Прізвище та ініціали викладача, повну назву предмету, номер лаби та код програми, якщо чогось не вистачає.\n"
-                "3. Коли всі дані зібрано, НЕ вставляй у report_body лише сирий код. Самостійно напиши повноцінний звіт із 6 розділів: Тема роботи, Мета роботи, Завдання, Хід роботи (детальний розбір коду та логіки), Код програми (повністю) та Висновки.\n"
-                "4. Виклич generate_report і передай цей структурований текст у report_body."
+                "1. Якщо завантажено методичку, прочитай її через extract_text_from_file, щоб взяти Тему, Мету та Завдання.\n"
+                "2. Запитай у користувача його Прізвище та ініціали, групу, Прізвище та ініціали викладача, повну назву предмету, номер лаби та код програми, якщо чогось не вистачає.\n"
+                "3. Коли всі дані зібрано, виклич generate_report і заповни всі поля українською мовою в академічному стилі. У поле program_code передай чистий код користувача без ```."
             )
         }
     ]
 
-# Обробка завантаження файлу
 uploaded_file = st.file_uploader("Завантажте методичку (PDF/DOCX)", type=["pdf", "docx"])
 if uploaded_file and "file_uploaded" not in st.session_state:
     file_path = uploaded_file.name
@@ -202,14 +219,12 @@ if uploaded_file and "file_uploaded" not in st.session_state:
     system_msg = f"[Системне повідомлення: Завантажено методичку '{file_path}'. Прочитай її за допомогою інструменту.]"
     st.session_state.messages.append({"role": "user", "content": system_msg})
 
-# Відображення історії чату (приховуємо системні та tool повідомлення для краси)
 for msg in st.session_state.messages:
     if msg["role"] in ["user", "assistant"] and not msg.get("content", "").startswith("[Системне"):
         if msg.get("content"):
             with st.chat_message(msg["role"]):
                 st.markdown(msg["content"])
 
-# Поле вводу
 if user_message := st.chat_input("Введіть повідомлення або вставте код..."):
     st.session_state.messages.append({"role": "user", "content": user_message})
     with st.chat_message("user"):
@@ -232,9 +247,17 @@ if user_message := st.chat_input("Введіть повідомлення або
                     result = extract_text_from_file(args.get('file_path'))
                 elif tool_name == 'generate_report':
                     result = generate_report(
-                        args.get('course_name'), args.get('lab_number'),
-                        args.get('student_name'), args.get('group_name'),
-                        args.get('teacher_name'), args.get('report_body')
+                        args.get('course_name'),
+                        args.get('lab_number'),
+                        args.get('student_name'),
+                        args.get('group_name'),
+                        args.get('teacher_name'),
+                        args.get('topic'),
+                        args.get('goal'),
+                        args.get('tasks'),
+                        args.get('workflow'),
+                        args.get('program_code'),
+                        args.get('conclusions')
                     )
                     st.success(result)
 
