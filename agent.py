@@ -56,10 +56,12 @@ def extract_text_from_file(file_path):
             reader = pypdf.PdfReader(file_path)
             for page in reader.pages:
                 extracted = page.extract_text()
-                if extracted: text += extracted + "\n"
+                if extracted:
+                    text += extracted + "\n"
         elif ext == "docx":
             doc = docx.Document(file_path)
-            for para in doc.paragraphs: text += para.text + "\n"
+            for para in doc.paragraphs:
+                text += para.text + "\n"
         return text
     except Exception as e:
         return f"Помилка при читанні файлу: {str(e)}"
@@ -118,7 +120,7 @@ uploaded_file = st.file_uploader("Завантажте методичку (PDF/D
 if uploaded_file and "file_uploaded" not in st.session_state:
     file_path = uploaded_file.name
     with open(file_path, "wb") as f:
-        f.write(uploaded_file.getbuffer())  # Фізичне збереження на диск
+        f.write(uploaded_file.getbuffer())
 
     st.session_state.file_uploaded = True
     system_msg = f"[Системне повідомлення: Завантажено методичку '{file_path}'. Прочитай її за допомогою інструменту.]"
@@ -139,52 +141,53 @@ if user_message := st.chat_input("Введіть повідомлення або
 
     with st.spinner("Агент думає..."):
         llm_msg = send_to_llm(st.session_state.messages)
-
         if llm_msg:
             st.session_state.messages.append(llm_msg)
 
-            # Якщо модель викликала інструмент
-            if llm_msg.get('tool_calls'):
-                for tool in llm_msg['tool_calls']:
-                    tool_name = tool['function']['name']
-                    tool_id = tool['id']
-                    args = json.loads(tool['function']['arguments'])  # Дістаємо аргументи
+        steps = 0
+        while llm_msg and llm_msg.get('tool_calls') and steps < 4:
+            steps += 1
+            for tool in llm_msg['tool_calls']:
+                tool_name = tool['function']['name']
+                tool_id = tool['id']
+                args = json.loads(tool['function']['arguments'])
 
-                    if tool_name == 'extract_text_from_file':
-                        result = extract_text_from_file(args.get('file_path'))
-                    elif tool_name == 'generate_report':
-                        result = generate_report(
-                            args.get('course_name'), args.get('lab_number'),
-                            args.get('student_name'), args.get('group_name'),
-                            args.get('teacher_name'), args.get('report_body')
-                        )
-                        st.success(result)  # Виводимо зелену плашку про успіх в UI
-                        
-                        output_filename = f"Lab_{args.get('lab_number')}_{args.get('student_name').replace(' ', '_')}.docx"
-                        if os.path.exists(output_filename):
-                            with open(output_filename, "rb") as file:
-                                st.download_button(
-                                    label="📥 Завантажити готовий звіт",
-                                    data=file,
-                                    file_name=output_filename,
-                                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                                )
-                    else:
-                        result = f'Інструмент {tool_name} не існує'
+                if tool_name == 'extract_text_from_file':
+                    result = extract_text_from_file(args.get('file_path'))
+                elif tool_name == 'generate_report':
+                    result = generate_report(
+                        args.get('course_name'), args.get('lab_number'),
+                        args.get('student_name'), args.get('group_name'),
+                        args.get('teacher_name'), args.get('report_body')
+                    )
+                    st.success(result)
 
-                    st.session_state.messages.append({
-                        "role": "tool",
-                        "tool_call_id": tool_id,
-                        "name": tool_name,
-                        "content": result
-                    })
+                    output_filename = f"Lab_{args.get('lab_number')}_{args.get('student_name').replace(' ', '_')}.docx"
+                    if os.path.exists(output_filename):
+                        st.session_state.generated_report = output_filename
+                else:
+                    result = f'Інструмент {tool_name} не існує'
 
-                # Відправляємо результати інструменту назад у модель для фінальної відповіді
-                llm_msg = send_to_llm(st.session_state.messages)
-                if llm_msg:
-                    st.session_state.messages.append(llm_msg)
+                st.session_state.messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_id,
+                    "name": tool_name,
+                    "content": result
+                })
 
-            # Вивід відповіді агента
-            if llm_msg and llm_msg.get('content'):
-                with st.chat_message("assistant"):
-                    st.markdown(llm_msg['content'])
+            llm_msg = send_to_llm(st.session_state.messages)
+            if llm_msg:
+                st.session_state.messages.append(llm_msg)
+
+        if llm_msg and llm_msg.get('content'):
+            with st.chat_message("assistant"):
+                st.markdown(llm_msg['content'])
+
+if "generated_report" in st.session_state and os.path.exists(st.session_state.generated_report):
+    with open(st.session_state.generated_report, "rb") as file:
+        st.download_button(
+            label="📥 Завантажити готовий звіт",
+            data=file.read(),
+            file_name=st.session_state.generated_report,
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        )
