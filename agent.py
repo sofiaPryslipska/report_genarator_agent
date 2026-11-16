@@ -132,14 +132,12 @@ def generate_report(course_name, lab_number, student_name, group_name, teacher_n
             "{{TEACHER_NAME}}": teacher_name
         }
 
-        # Заміна тегів у таблицях титульної сторінки зі збереженням Times New Roman 14
         for table in doc.tables:
             for row in table.rows:
                 for cell in row.cells:
                     for paragraph in cell.paragraphs:
                         _replace_tags_in_paragraph(paragraph, replacements)
 
-        # Заміна тегів у звичайних абзацах
         for paragraph in doc.paragraphs:
             _replace_tags_in_paragraph(paragraph, replacements)
 
@@ -160,7 +158,6 @@ def generate_report(course_name, lab_number, student_name, group_name, teacher_n
                 for line in raw_code.split('\n'):
                     if line.strip().startswith('```'):
                         continue
-                    # Перетворюємо початкові групи по 4 пробіли на табуляцію для чітких відступів у Word
                     leading_spaces = len(line) - len(line.lstrip(' '))
                     formatted_line = ('\t' * (leading_spaces // 4)) + (' ' * (leading_spaces % 4)) + line.lstrip(' ')
                     new_p = paragraph.insert_paragraph_before()
@@ -234,9 +231,8 @@ if "messages" not in st.session_state:
 if "tool_logs" not in st.session_state:
     st.session_state.tool_logs = []
 
-# Бічна панель трейсингу інструментів
 with st.sidebar:
-    st.header("🔍 Трейсинг інструментів")
+    st.header("Трейсинг інструментів")
     if not st.session_state.tool_logs:
         st.caption("Інструменти ще не викликалися.")
     else:
@@ -263,7 +259,7 @@ for msg in st.session_state.messages:
             with st.chat_message(msg["role"]):
                 st.markdown(msg["content"])
 
-if user_message := st.chat_input("Введіть повідомлення або вставте код..."):
+if user_message := st.chat_input("Введіть повідомлення..."):
     st.session_state.messages.append({"role": "user", "content": user_message})
     with st.chat_message("user"):
         st.markdown(user_message)
@@ -305,7 +301,6 @@ if user_message := st.chat_input("Введіть повідомлення або
                 else:
                     result = f'Інструмент {tool_name} не існує'
 
-                # Записуємо виклик у лог трейсингу
                 st.session_state.tool_logs.append({
                     "tool": tool_name,
                     "args": {k: (v[:200] + "..." if isinstance(v, str) and len(v) > 200 else v) for k, v in args.items()},
@@ -333,7 +328,7 @@ if user_message := st.chat_input("Введіть повідомлення або
 if "generated_report" in st.session_state and os.path.exists(st.session_state.generated_report):
     with open(st.session_state.generated_report, "rb") as file:
         st.download_button(
-            label="📥 Завантажити готовий звіт",
+            label="Завантажити готовий звіт",
             data=file.read(),
             file_name=st.session_state.generated_report,
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
