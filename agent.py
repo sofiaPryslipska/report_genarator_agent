@@ -43,7 +43,7 @@ tools = [
                     "goal": {"type": "string", "description": "Мета роботи: візьми з методички або сформулюй самостійно за кодом. НЕ запитуй у користувача."},
                     "tasks": {"type": "string", "description": "Завдання роботи: візьми з методички або сформулюй самостійно за кодом. НЕ запитуй у користувача."},
                     "workflow": {"type": "string", "description": "Детальний покроковий опис ходу роботи, бібліотек та логіки коду"},
-                    "program_code": {"type": "string", "description": "Повний чистий лістинг коду програми без обгорток ```"},
+                    "program_code": {"type": "string", "description": "Повний лістинг коду програми зі збереженням усіх переносів рядків (\\n) та відступів, без обгорток ```"},
                     "conclusions": {"type": "string", "description": "Висновки до лабораторної роботи"}
                 },
                 "required": [
@@ -75,6 +75,16 @@ def extract_text_from_file(file_path):
         return text
     except Exception as e:
         return f"Помилка при читанні файлу: {str(e)}"
+
+
+def _replace_tags_in_paragraph(paragraph, replacements):
+    for tag, actual_text in replacements.items():
+        if tag in paragraph.text:
+            new_text = paragraph.text.replace(tag, actual_text)
+            paragraph.text = ""
+            run = paragraph.add_run(new_text)
+            run.font.name = 'Times New Roman'
+            run.font.size = Pt(14)
 
 
 def _add_formatted_paragraph(target_paragraph, text):
@@ -121,36 +131,47 @@ def generate_report(course_name, lab_number, student_name, group_name, teacher_n
             "{{GROUP_NAME}}": group_name,
             "{{TEACHER_NAME}}": teacher_name
         }
+
+        # Заміна тегів у таблицях титульної сторінки зі збереженням Times New Roman 14
+        for table in doc.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    for paragraph in cell.paragraphs:
+                        _replace_tags_in_paragraph(paragraph, replacements)
+
+        # Заміна тегів у звичайних абзацах
         for paragraph in doc.paragraphs:
-            for tag, actual_text in replacements.items():
-                if tag in paragraph.text:
-                    paragraph.text = paragraph.text.replace(tag, actual_text)
+            _replace_tags_in_paragraph(paragraph, replacements)
 
             if "{{REPORT_BODY}}" in paragraph.text:
                 sections = [
-                    ("1. Тема роботи", topic),
-                    ("2. Мета роботи", goal),
-                    ("3. Завдання", tasks),
-                    ("4. Хід роботи", workflow),
+                    ("Тема роботи", topic),
+                    ("Мета роботи", goal),
+                    ("Завдання", tasks),
+                    ("Хід роботи", workflow),
                 ]
                 for title, content in sections:
                     _add_section_heading(paragraph, title)
                     for line in str(content).split('\n'):
                         _add_formatted_paragraph(paragraph, line)
 
-                _add_section_heading(paragraph, "5. Код програми")
-                code_lines = str(program_code).strip().split('\n')
-                for line in code_lines:
+                _add_section_heading(paragraph, "Код програми")
+                raw_code = str(program_code).replace('\r\n', '\n').strip('\n')
+                for line in raw_code.split('\n'):
                     if line.strip().startswith('```'):
                         continue
+                    # Перетворюємо початкові групи по 4 пробіли на табуляцію для чітких відступів у Word
+                    leading_spaces = len(line) - len(line.lstrip(' '))
+                    formatted_line = ('\t' * (leading_spaces // 4)) + (' ' * (leading_spaces % 4)) + line.lstrip(' ')
                     new_p = paragraph.insert_paragraph_before()
                     new_p.paragraph_format.space_before = Pt(0)
                     new_p.paragraph_format.space_after = Pt(0)
-                    run = new_p.add_run(line)
+                    new_p.paragraph_format.line_spacing = 1.0
+                    run = new_p.add_run(formatted_line if formatted_line else " ")
                     run.font.name = 'Consolas'
                     run.font.size = Pt(10)
 
-                _add_section_heading(paragraph, "6. Висновки")
+                _add_section_heading(paragraph, "Висновки")
                 for line in str(conclusions).split('\n'):
                     _add_formatted_paragraph(paragraph, line)
 
@@ -205,10 +226,26 @@ if "messages" not in st.session_state:
                 "1. У користувача запитуй ЛИШЕ ці 6 пунктів (якщо чогось із цього немає): Прізвище та ініціали студента, групу, Прізвище та ініціали викладача, назву предмету, номер лаби та код програми.\n"
                 "2. СУВОРА ЗАБОРОНА: Ніколи не запитуй у користувача тему, мету, завдання, хід роботи чи висновки!\n"
                 "3. Якщо завантажено методичку — прочитай її через extract_text_from_file і візьми тему, мету та завдання звідти. Якщо методички немає або в ній цього не вказано — самостійно придумай і сформулюй тему, мету та завдання на основі коду програми.\n"
-                "4. Щойно маєш 6 пунктів від користувача, одразу виклич generate_report і заповни всі розділи українською мовою в академічному стилі (у program_code передай чистий код без ```)."
+                "4. Щойно маєш 6 пунктів від користувача, одразу виклич generate_report і заповни всі розділи українською мовою в академічному стилі. У program_code передай точний код користувача, обов'язково зберігаючи всі переноси рядків та відступи."
             )
         }
     ]
+
+if "tool_logs" not in st.session_state:
+    st.session_state.tool_logs = []
+
+# Бічна панель трейсингу інструментів
+with st.sidebar:
+    st.header("🔍 Трейсинг інструментів")
+    if not st.session_state.tool_logs:
+        st.caption("Інструменти ще не викликалися.")
+    else:
+        for i, log in enumerate(st.session_state.tool_logs, 1):
+            with st.expander(f"Крок {i}: {log['tool']}", expanded=True):
+                st.markdown("**Аргументи:**")
+                st.json(log["args"])
+                st.markdown("**Результат:**")
+                st.code(log["result"], language="text")
 
 uploaded_file = st.file_uploader("Завантажте методичку (PDF/DOCX)", type=["pdf", "docx"])
 if uploaded_file and "file_uploaded" not in st.session_state:
@@ -268,6 +305,13 @@ if user_message := st.chat_input("Введіть повідомлення або
                 else:
                     result = f'Інструмент {tool_name} не існує'
 
+                # Записуємо виклик у лог трейсингу
+                st.session_state.tool_logs.append({
+                    "tool": tool_name,
+                    "args": {k: (v[:200] + "..." if isinstance(v, str) and len(v) > 200 else v) for k, v in args.items()},
+                    "result": result[:300] + "..." if len(str(result)) > 300 else str(result)
+                })
+
                 st.session_state.messages.append({
                     "role": "tool",
                     "tool_call_id": tool_id,
@@ -282,6 +326,9 @@ if user_message := st.chat_input("Введіть повідомлення або
         if llm_msg and llm_msg.get('content'):
             with st.chat_message("assistant"):
                 st.markdown(llm_msg['content'])
+
+        if st.session_state.tool_logs:
+            st.rerun()
 
 if "generated_report" in st.session_state and os.path.exists(st.session_state.generated_report):
     with open(st.session_state.generated_report, "rb") as file:
