@@ -209,7 +209,6 @@ def send_to_llm(messages):
     return msg
 
 
-# Налаштування інтерфейсу
 st.set_page_config(page_title="Агент звітів", page_icon="📝", layout="centered")
 st.title("Автоматичний генератор звітів ")
 
