@@ -211,7 +211,7 @@ def send_to_llm(messages):
 
 # Налаштування інтерфейсу
 st.set_page_config(page_title="Агент звітів", page_icon="📝", layout="centered")
-st.title("Автоматичний генератор звітів 📝")
+st.title("Автоматичний генератор звітів ")
 
 if "messages" not in st.session_state:
     st.session_state.messages = [
